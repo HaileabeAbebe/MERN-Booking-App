@@ -7,6 +7,7 @@ import { v2 as cloudinary } from "cloudinary";
 import userRoutes from "./routes/users.route";
 import authRotues from "./routes/auth.route";
 import myHotelRoute from "./routes/my-hotels.route";
+import hotelRoute from "./routes/hotels.route";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -32,6 +33,7 @@ app.use(
 app.use("/api/users", userRoutes);
 app.use("/api/auth", authRotues);
 app.use("/api/my-hotels", myHotelRoute);
+app.use("/api/hotels", hotelRoute);
 
 app.listen(port, () => {
   console.log(`server running on localhost ${port}`);

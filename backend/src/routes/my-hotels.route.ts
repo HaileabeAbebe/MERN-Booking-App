@@ -17,7 +17,6 @@ const upload = multer({
   },
 });
 
-// Defining a POST route for creating a new hotel.
 router.post(
   "/",
   verifyToken, // Middleware to verify the token.
@@ -29,23 +28,7 @@ router.post(
       const newHotel: HotelType = req.body;
 
       // Uploading each image to Cloudinary and getting the URLs.
-      const uploadPromises = imageFiles.map(async (image) => {
-        // Each image file is converted into a format called base64. This is a common way to encode binary data, like images, into text.
-        const b64 = Buffer.from(image.buffer).toString("base64");
-
-        // A data URI is a string that represents the image data. It includes the image's MIME type (a standard that indicates the nature and format of a document or a file), followed by the base64-encoded image data.
-        let dataURI = "data:" + image.mimetype + ";base64," + b64;
-
-        // The data URI is then uploaded to Cloudinary. Cloudinary is a cloud-based service that provides an end-to-end image and video management solution including uploads, storage, manipulations, optimizations and delivery.
-        // The 'await' keyword is used to wait for the upload to finish before moving on. This is necessary because uploading an image can take some time, and we don't want to proceed until we know the upload was successful.
-        const res = await cloudinary.v2.uploader.upload(dataURI);
-
-        // Once the upload is complete, Cloudinary provides us with a URL where the image can be accessed. We return this URL so it can be used later.
-        return res.url;
-      });
-
-      // Waiting for all the images to be uploaded.
-      const imageUrls = await Promise.all(uploadPromises);
+      const imageUrls = await uploadImages(imageFiles);
 
       // Adding the image URLs, the last updated date, and the user ID to the new hotel data.
       newHotel.imageUrls = imageUrls;
@@ -56,10 +39,8 @@ router.post(
       const hotel = new Hotel(newHotel);
       await hotel.save();
 
-      // Sending a response with a status of 201 (Created) and the new hotel data.
       res.status(201).send(hotel);
     } catch (error) {
-      // Logging the error and sending a response with a status of 500 (Internal Server Error) and a message.
       console.log("Error creating hotel", error);
       res.status(500).json({ message: "Something went wrong" });
     }
@@ -75,5 +56,67 @@ router.get("/", verifyToken, async (req: Request, res: Response) => {
   }
 });
 
-// Exporting the router.
+router.get("/:hotelId", verifyToken, async (req: Request, res: Response) => {
+  let hotelID = req.params.hotelId;
+  try {
+    const hotel = await Hotel.findOne({ _id: hotelID, userId: req.userId });
+    res.status(200).send(hotel);
+  } catch (error) {}
+});
+
+router.put(
+  "/:hotelId",
+  verifyToken,
+  upload.array("imageFiles"),
+  async (req: Request, res: Response) => {
+    try {
+      const updatedHotel: HotelType = req.body;
+      updatedHotel.lastUpdated = new Date();
+      const hotel = await Hotel.findOneAndUpdate(
+        {
+          _id: req.params.hotelId,
+          userId: req.userId,
+        },
+        updatedHotel,
+        { new: true }
+      );
+      if (!hotel) {
+        return res.status(404).json({ message: "Hotel not found" });
+      }
+      const files = req.files as Express.Multer.File[];
+      const updatedImageUrls = await uploadImages(files);
+      hotel.imageUrls = [
+        ...updatedImageUrls,
+        ...(updatedHotel.imageUrls || []),
+      ];
+
+      await hotel.save();
+      res.status(201).json(hotel);
+    } catch (error) {
+      res.status(500).json({ message: error });
+    }
+  }
+);
+
+async function uploadImages(imageFiles: Express.Multer.File[]) {
+  const uploadPromises = imageFiles.map(async (image) => {
+    // Each image file is converted into a format called base64. This is a common way to encode binary data, like images, into text.
+    const b64 = Buffer.from(image.buffer).toString("base64");
+
+    // A data URI is a string that represents the image data. It includes the image's MIME type (a standard that indicates the nature and format of a document or a file), followed by the base64-encoded image data.
+    let dataURI = "data:" + image.mimetype + ";base64," + b64;
+
+    // The data URI is then uploaded to Cloudinary. Cloudinary is a cloud-based service that provides an end-to-end image and video management solution including uploads, storage, manipulations, optimizations and delivery.
+    // The 'await' keyword is used to wait for the upload to finish before moving on. This is necessary because uploading an image can take some time, and we don't want to proceed until we know the upload was successful.
+    const res = await cloudinary.v2.uploader.upload(dataURI);
+
+    // Once the upload is complete, Cloudinary provides us with a URL where the image can be accessed. We return this URL so it can be used later.
+    return res.url;
+  });
+
+  // Waiting for all the images to be uploaded.
+  const imageUrls = await Promise.all(uploadPromises);
+  return imageUrls;
+}
+
 export default router;
